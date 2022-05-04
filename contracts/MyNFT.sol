@@ -25,20 +25,23 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
     uint256 public maxSupply = 100;
 
     string public notRevealedURI;
-    string public baseURI1;
-    string public baseURI2;
+    string public baseURI1; // -ve deviation
+    string public baseURI2; // not enough deviation
+    string public baseURI3; // +ve deviation 
 
     bool public revealed         = false;
     bool public publicSaleActive = false;
     bool public preSaleActive    = false;
 
-    uint256 public maxPreSaleSupply;
-    uint256 public preSalePrice;
-    uint256 public publicSalePrice;
+    uint256 public preSalePrice  = 0.1 ether;
+    uint256 public publicSalePrice = 0.15 ether;
+    uint256 public maxPerWallet = 1;
 
     uint256 public deviationThreshold = 1;
 
-    constructor() ERC1155(baseURI1) ReentrancyGuard(){
+    mapping(address => bool) public isWhiteListed;
+
+    constructor() ERC1155(baseURI2) ReentrancyGuard(){
         priceFeed = AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419); // mainnet
         pause();
     }
@@ -51,14 +54,23 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
         }
     }
 
-    function preSaleMint(uint256 _amount)external payable whenNotPaused {
+    function addToWhitelist(address[] memory _address) external onlyOwner {
+        for (uint256 index = 0; index < _address.length; index++) {
+            isWhiteListed[_address[index]] = true;
+        }
+    }
+
+    function preSaleMint(uint256 _amount) external payable whenNotPaused {
         require(preSaleActive, "NFT:Pre-sale is not active");
-        require(totalSupply(0).add(_amount) <= maxPreSaleSupply, 'NFT: Mint would exceed PreSaleLimit');
+        require(isWhiteListed[msg.sender], "NFT:Sender is not whitelisted");
+        require(totalSupply(0).add(_amount) <= maxSupply, 'NFT: Mint would exceed total supply');
+        require(balanceOf(msg.sender, 0).add(_amount) <= maxPerWallet, "NFT: You Cannot Mint so many tokens in the public sale");
         mint(_amount, true);
     }
 
     function publicSaleMint(uint256 _amount) external payable whenNotPaused {
         require(totalSupply(0).add(_amount) <= maxSupply, 'NFT: Ether would exceed total supply');
+        require(balanceOf(msg.sender, 0).add(_amount) <= maxPerWallet, "NFT: You Cannot Mint so many tokens in the public sale");
         mint(_amount, false);
     }
 
@@ -77,9 +89,10 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
         deviationThreshold = _deviationThreshold;
     }
 
-    function setURI(string memory _baseURI1, string memory _baseURI2) external onlyOwner {
-        baseURI1  = _baseURI1;
+    function setURI(string memory _baseURI1, string memory _baseURI2, string memory _baseURI3) external onlyOwner {
+        baseURI1 = _baseURI1;
         baseURI2 = _baseURI2;
+        baseURI3 = _baseURI3;
     }
 
     function setPreSalePrice(uint256 _preSalePrice) external onlyOwner {
@@ -112,16 +125,18 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
 
     function uri(uint256 _id) public view override returns (string memory) {
         require(exists(_id), "ERC1155 uri: NONEXISTENT_TOKEN"); 
-        bool flag = checkDeviation();
-        if(flag == true) {
+        uint256 check = checkDeviation();
+
+        if(check == 1) {
             return bytes(baseURI1).length > 0 ? string(abi.encodePacked(baseURI1, (_id).toString(), ".json")) : "";
         }
-        else {
+        if (check == 2) {
             return bytes(baseURI2).length > 0 ? string(abi.encodePacked(baseURI2, (_id).toString(), ".json")) : "";
         }
+        return bytes(baseURI2).length > 0 ? string(abi.encodePacked(baseURI3, (_id).toString(), ".json")) : "";
     }
 
-    function checkDeviation() internal view returns(bool) {
+    function checkDeviation() internal view returns(uint256) {
         uint80 roundId;
         int price;
         int priceOld;
@@ -140,22 +155,25 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
         }
 
         if(price == priceOld) {
-            return false;
+            return 2; // no deviation
         }
 
         if(price > priceOld) {
             priceDifference = uint256(price - priceOld);
             deviation = priceDifference.mul(100).div(uint256(priceOld));
-        }
-        else {
-            priceDifference = uint256(priceOld - price);
-            deviation = priceDifference.mul(100).div(uint256(priceOld));
+            if(deviation > deviationThreshold) {
+                return 3; // +ve deviation
+            }
+            return 2;     // not enough deviation 
         }
 
+        priceDifference = uint256(priceOld - price);
+        deviation = priceDifference.mul(100).div(uint256(priceOld));
+
         if(deviation > deviationThreshold) {
-            return true;
+            return 1; // -ve deviation
         }
-        return false;
+        return 2;     // not enough deviation 
     }
 
     function _beforeTokenTransfer(address operator, address from, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data)
