@@ -28,18 +28,22 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
     string public baseURI1; // -ve deviation
     string public baseURI2; // not enough deviation
     string public baseURI3; // +ve deviation 
-
+    string public notRevealedUri;
+    
     bool public revealed         = false;
     bool public publicSaleActive = false;
     bool public preSaleActive    = false;
 
     uint256 public preSalePrice  = 0.1 ether;
     uint256 public publicSalePrice = 0.15 ether;
-    uint256 public maxPerWallet = 1;
+    uint256 public maxPreSale = 1;
+    uint256 public maxPublicSale = 1;
 
-    uint256 public deviationThreshold = 1;
+    uint256 public deviationThreshold = 5;
 
     mapping(address => bool) public isWhiteListed;
+    mapping(address => uint256) public preSaleCounter;
+    mapping(address => uint256) public publicSaleCounter;
 
     constructor() ERC1155(baseURI2) ReentrancyGuard(){
         priceFeed = AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419); // mainnet
@@ -63,15 +67,18 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
     function preSaleMint(uint256 _amount) external payable whenNotPaused {
         require(preSaleActive, "NFT:Pre-sale is not active");
         require(isWhiteListed[msg.sender], "NFT:Sender is not whitelisted");
-        require(totalSupply(0).add(_amount) <= maxSupply, 'NFT: Mint would exceed total supply');
-        require(balanceOf(msg.sender, 0).add(_amount) <= maxPerWallet, "NFT: You Cannot Mint so many tokens in the public sale");
+        require(preSaleCounter[msg.sender].add(_amount) <= maxPreSale, 'NFT: Mint would exceed total supply');
+        require(totalSupply(0).add(_amount) <= maxSupply, "NFT: You Cannot Mint so many tokens in the public sale");
         mint(_amount, true);
+        preSaleCounter[msg.sender] += _amount;
     }
 
     function publicSaleMint(uint256 _amount) external payable whenNotPaused {
+        require(publicSaleActive, "NFT:Public-sale is not active");
         require(totalSupply(0).add(_amount) <= maxSupply, 'NFT: Ether would exceed total supply');
-        require(balanceOf(msg.sender, 0).add(_amount) <= maxPerWallet, "NFT: You Cannot Mint so many tokens in the public sale");
+        require(publicSaleCounter[msg.sender].add(_amount) <= maxPublicSale, 'NFT: Mint would exceed total supply');
         mint(_amount, false);
+        publicSaleCounter[msg.sender] += _amount;
     }
 
     function mint(uint256 _amount, bool _state) internal {
@@ -93,6 +100,10 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
         baseURI1 = _baseURI1;
         baseURI2 = _baseURI2;
         baseURI3 = _baseURI3;
+    }
+
+    function setNotRevealedURI(string memory _notRevealedUri) external onlyOwner {
+        notRevealedUri = _notRevealedUri;
     }
 
     function setPreSalePrice(uint256 _preSalePrice) external onlyOwner {
@@ -125,15 +136,19 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
 
     function uri(uint256 _id) public view override returns (string memory) {
         require(exists(_id), "ERC1155 uri: NONEXISTENT_TOKEN"); 
-        uint256 check = checkDeviation();
 
+        if(!revealed){
+            return notRevealedUri;
+        }
+        
+        uint256 check = checkDeviation();
         if(check == 1) {
-            return bytes(baseURI1).length > 0 ? string(abi.encodePacked(baseURI1, (_id).toString(), ".json")) : "";
+            return baseURI1;
         }
         if (check == 2) {
-            return bytes(baseURI2).length > 0 ? string(abi.encodePacked(baseURI2, (_id).toString(), ".json")) : "";
+            return baseURI2;
         }
-        return bytes(baseURI2).length > 0 ? string(abi.encodePacked(baseURI3, (_id).toString(), ".json")) : "";
+        return baseURI3;
     }
 
     function checkDeviation() internal view returns(uint256) {
@@ -182,6 +197,11 @@ contract MyNFT is ERC1155, Ownable, ReentrancyGuard, Pausable, ERC1155Supply {
         override(ERC1155, ERC1155Supply)
     {
         super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+    }
+
+    function withdrawTotal() external onlyOwner {
+        uint balance = address(this).balance;
+        payable(msg.sender).transfer(balance);
     }
 
 }
