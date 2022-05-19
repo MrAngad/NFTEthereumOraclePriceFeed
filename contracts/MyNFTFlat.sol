@@ -1572,18 +1572,7 @@ contract MyNFT is ERC1155, Ownable, Pausable, ERC1155Supply {
     string public baseURI4;      // -10% <  x <  -5%
     string public baseURI5;      //         x <= -10%
     
-    bool public revealed         = false;
-    bool public publicSaleActive = false;
-    bool public preSaleActive    = false;
-
-    uint256 public preSalePrice    = 0.1 ether;
-    uint256 public publicSalePrice = 0.15 ether;
-    uint256 public maxPreSale      = 1;
-    uint256 public maxPublicSale   = 1;
-
-    mapping(address => bool) public isWhiteListed;
-    mapping(address => uint256) public preSaleCounter;
-    mapping(address => uint256) public publicSaleCounter;
+    bool public revealed = false;
 
     constructor() ERC1155(baseURI2) {
         //priceFeed = AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419); // mainnet
@@ -1591,46 +1580,12 @@ contract MyNFT is ERC1155, Ownable, Pausable, ERC1155Supply {
         pause();
     }
 
-/*     function airDrop(address[] memory _address) external onlyOwner {
+    function airDrop(address[] memory _address) external onlyOwner {
         uint mintIndex = totalSupply(0).add(1);
         require(mintIndex.add(_address.length) <= maxSupply, 'NFT: airdrop would exceed total supply');
         for(uint index = 0; index < _address.length; index++) {
             _mint(_address[index], 0, 1, "0x0");
         }
-    } */
-
-    function addToWhitelist(address[] memory _address) external onlyOwner {
-        for (uint256 index = 0; index < _address.length; index++) {
-            isWhiteListed[_address[index]] = true;
-        }
-    }
-
-    function preSaleMint(uint256 _amount) external payable whenNotPaused {
-        require(preSaleActive, "NFT:Pre-sale is not active");
-        require(isWhiteListed[msg.sender], "NFT:Sender is not whitelisted");
-        require(preSaleCounter[msg.sender].add(_amount) <= maxPreSale, 'NFT: Mint would exceed total supply');
-        require(totalSupply(0).add(_amount) <= maxSupply, "NFT: You Cannot Mint so many tokens in the public sale");
-        mint(_amount, true);
-        preSaleCounter[msg.sender] += _amount;
-    }
-
-    function publicSaleMint(uint256 _amount) external payable whenNotPaused {
-        require(publicSaleActive, "NFT:Public-sale is not active");
-        require(totalSupply(0).add(_amount) <= maxSupply, 'NFT: Ether would exceed total supply');
-        require(publicSaleCounter[msg.sender].add(_amount) <= maxPublicSale, 'NFT: Mint would exceed total supply');
-        mint(_amount, false);
-        publicSaleCounter[msg.sender] += _amount;
-    }
-
-    function mint(uint256 _amount, bool _state) internal {
-        if(_state) {
-            require(preSalePrice.mul(_amount) <= msg.value, "NFT: Ether value sent for presale mint is not correct");
-        }
-        else {
-            require(publicSalePrice.mul(_amount) <= msg.value, "NFT: Ether value sent for public mint is not correct");
-        }
-
-        _mint(address(msg.sender), 0, _amount, "0x0");
     }
 
     function setURI(string memory _baseURI1, string memory _baseURI2, string memory _baseURI3, string memory _baseURI4, string memory _baseURI5) external onlyOwner {
@@ -1645,22 +1600,6 @@ contract MyNFT is ERC1155, Ownable, Pausable, ERC1155Supply {
         notRevealedURI = _notRevealedURI;
     }
 
-    function setPreSalePrice(uint256 _preSalePrice) external onlyOwner {
-        preSalePrice = _preSalePrice;
-    }
-
-    function setPublicSalePrice(uint256 _publicSalePrice) external onlyOwner {
-        publicSalePrice = _publicSalePrice;
-    }
-
-    function togglePublicSale()external onlyOwner {
-        publicSaleActive = !publicSaleActive;
-    }
-
-    function togglePreSale() external onlyOwner {
-        preSaleActive = !preSaleActive;
-    }
-
     function reveal() external onlyOwner {
         revealed = true;
     }
@@ -1673,17 +1612,8 @@ contract MyNFT is ERC1155, Ownable, Pausable, ERC1155Supply {
         _unpause();
     }
 
-    int public oldPrice;
-    int public currentPrice;
-    function setPriceOld(int _currentPrice, int _oldPrice) external {
-        oldPrice     = _oldPrice;
-        currentPrice = _currentPrice;
-    }
-
     function uri(uint256 _id) public view override returns (string memory) {
-        //console.log("here");
         require(exists(_id), "ERC1155 uri: NONEXISTENT_TOKEN"); 
-        //console.log("does not revert");
         if(!revealed){
             return notRevealedURI;
         }
@@ -1722,11 +1652,6 @@ contract MyNFT is ERC1155, Ownable, Pausable, ERC1155Supply {
             roundId -= 1;
             (,priceOld,, timeStampOld,) = priceFeed.getRoundData(roundId);
         }
- 
-        /////////////////////
-        price    = currentPrice;
-        priceOld = oldPrice;     // Testing
-        /////////////////////
 
         if(price == priceOld) {
             return 3; // -5%  <= x <  +5% 

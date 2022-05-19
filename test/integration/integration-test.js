@@ -14,9 +14,6 @@ describe("Test NFT", function () {
     });
 
     it("Deploy checks", async function () {
-        let currentPrice = 110;
-        let oldPrice     = 100;
-
         await NFT.setURI("one.com", "two.com", "three.com", "four.com", "five.com");
         console.log(await NFT.baseURI2());
     });
